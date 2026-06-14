@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Hibi — 朝夕10分のジャーナリング</title>
+
+<!-- PWA 設定 -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#c98a5e" />
+<meta name="description" content="朝夕10分でできる、感謝と振り返りのジャーナリングアプリ" />
+<!-- iOS（ホーム画面追加）用 -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="Hibi" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
+<style>
+  /* ===== デザイントークン（配色・余白などの共通変数）===== */
+  :root {
+    --bg: #f7f5f1;            /* 全体の背景（やわらかいオフホワイト）*/
+    --surface: #ffffff;       /* カードの背景 */
+    --surface-2: #f1efe9;     /* 補助的な面 */
+    --ink: #2c2a26;           /* 基本の文字色 */
+    --ink-soft: #6f6a61;      /* 補助テキスト */
+    --line: #e6e2da;          /* 境界線 */
+    --accent: #c98a5e;        /* アクセント（テラコッタ）*/
+    --accent-soft: #f3e6da;
+    --morning: #e9a23b;       /* 朝のテーマ色 */
+    --morning-soft: #fbf0db;
+    --evening: #5b6bb5;       /* 夜のテーマ色 */
+    --evening-soft: #e7e9f6;
+    --good: #4f9d77;
+    --radius: 20px;
+    --radius-sm: 12px;
+    --shadow: 0 10px 30px rgba(44, 42, 38, 0.08);
+    --shadow-sm: 0 4px 14px rgba(44, 42, 38, 0.06);
+    --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+    /* 時間帯に応じて背景にほのかな色味を敷く */
+    background-image: radial-gradient(1200px 600px at 80% -10%, var(--mode-tint, transparent), transparent 70%);
+    transition: background-image .6s ease;
+  }
+
+  .app { max-width: 680px; margin: 0 auto; padding: 24px 20px 96px; min-height: 100%; }
+
+  /* ===== ヘッダー ===== */
+  header.top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand h1 { font-size: 1.5rem; letter-spacing: .04em; font-weight: 700; }
+  .brand .sub { font-size: .78rem; color: var(--ink-soft); letter-spacing: .02em; }
+  .today-chip {
+    font-size: .82rem; color: var(--ink-soft); background: var(--surface);
+    border: 1px solid var(--line); padding: 6px 12px; border-radius: 999px; box-shadow: var(--shadow-sm);
+  }
+
+  /* ===== カード共通 ===== */
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px; }
+
+  /* ===== ストリーク & 概要 ===== */
+  .overview { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 22px; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 16px 18px; box-shadow: var(--shadow-sm); }
+  .stat .num { font-size: 1.8rem; font-weight: 700; line-height: 1.2; }
+  .stat .label { font-size: .78rem; color: var(--ink-soft); }
+  .stat .num small { font-size: .9rem; font-weight: 600; color: var(--ink-soft); }
+
+  /* ===== セッション開始ボタン（朝/夜）===== */
+  .sessions { display: grid; gap: 14px; margin-bottom: 26px; }
+  @media (min-width: 540px) { .sessions { grid-template-columns: 1fr 1fr; } }
+  .session-btn {
+    position: relative; text-align: left; border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 20px; cursor: pointer; background: var(--surface); box-shadow: var(--shadow);
+    transition: transform .15s ease, box-shadow .15s ease; overflow: hidden;
+  }
+  .session-btn:hover { transform: translateY(-3px); box-shadow: 0 16px 36px rgba(44,42,38,.12); }
+  .session-btn:active { transform: translateY(-1px); }
+  .session-btn .emoji { font-size: 1.7rem; }
+  .session-btn h3 { font-size: 1.1rem; margin: 8px 0 4px; }
+  .session-btn p { font-size: .82rem; color: var(--ink-soft); }
+  .session-btn.morning { background: linear-gradient(160deg, var(--morning-soft), var(--surface)); }
+  .session-btn.evening { background: linear-gradient(160deg, var(--evening-soft), var(--surface)); }
+  .session-btn .done-tag {
+    position: absolute; top: 16px; right: 16px; font-size: .72rem; color: #fff;
+    background: var(--good); padding: 3px 10px; border-radius: 999px; display: none;
+  }
+  .session-btn.is-done .done-tag { display: inline-block; }
+  .session-btn.is-done { opacity: .92; }
+
+  /* ===== 気分グラフ ===== */
+  .chart-card { margin-bottom: 26px; }
+  .chart-card h2 { font-size: 1rem; margin-bottom: 4px; }
+  .chart-card .hint { font-size: .78rem; color: var(--ink-soft); margin-bottom: 14px; }
+  .chart { width: 100%; height: 140px; display: block; }
+  .chart-empty { font-size: .85rem; color: var(--ink-soft); padding: 18px 0; text-align: center; }
+
+  /* ===== 履歴 ===== */
+  .history h2 { font-size: 1rem; margin-bottom: 12px; }
+  .entry { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 10px; background: var(--surface); box-shadow: var(--shadow-sm); }
+  .entry .date { font-weight: 700; font-size: .9rem; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .entry .badges { display: flex; gap: 6px; }
+  .badge { font-size: .68rem; padding: 2px 8px; border-radius: 999px; }
+  .badge.m { background: var(--morning-soft); color: #9a6510; }
+  .badge.e { background: var(--evening-soft); color: #3a458a; }
+  .entry details { margin-top: 6px; }
+  .entry summary { cursor: pointer; font-size: .82rem; color: var(--accent); list-style: none; }
+  .entry summary::-webkit-details-marker { display: none; }
+  .entry .detail-body { font-size: .85rem; color: var(--ink-soft); padding-top: 8px; }
+  .entry .detail-body strong { color: var(--ink); font-weight: 600; }
+  .entry .detail-body ul { margin: 2px 0 8px 18px; }
+
+  /* ===== セッション画面（モーダル）===== */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(28, 26, 22, 0.45); backdrop-filter: blur(4px);
+    display: none; align-items: flex-end; justify-content: center; z-index: 50;
+  }
+  .overlay.open { display: flex; }
+  @media (min-width: 540px) { .overlay { align-items: center; } }
+
+  .sheet {
+    background: var(--surface); width: 100%; max-width: 560px; border-radius: 24px 24px 0 0;
+    padding: 22px 22px 26px; box-shadow: 0 -10px 40px rgba(0,0,0,.2);
+    animation: slideUp .35s cubic-bezier(.2,.8,.2,1); max-height: 92vh; overflow-y: auto;
+  }
+  @media (min-width: 540px) { .sheet { border-radius: 24px; animation: pop .3s ease; } }
+  @keyframes slideUp { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+  @keyframes pop { from { transform: scale(.96); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .sheet-head .mode-name { font-size: .85rem; font-weight: 700; letter-spacing: .04em; }
+  .sheet-head .close { background: none; border: none; font-size: 1.5rem; color: var(--ink-soft); cursor: pointer; line-height: 1; }
+
+  /* 進捗バー */
+  .progress { height: 5px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin: 8px 0 20px; }
+  .progress > span { display: block; height: 100%; background: var(--accent); width: 0; transition: width .3s ease; border-radius: 999px; }
+
+  .step .q-index { font-size: .76rem; color: var(--ink-soft); letter-spacing: .05em; }
+  .step h2 { font-size: 1.28rem; line-height: 1.5; margin: 6px 0 4px; }
+  .step .q-note { font-size: .82rem; color: var(--ink-soft); margin-bottom: 18px; }
+
+  /* 入力欄 */
+  .field { margin-bottom: 12px; }
+  input[type="text"], textarea {
+    width: 100%; font-family: var(--font); font-size: 1rem; color: var(--ink);
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
+    padding: 13px 14px; resize: vertical; transition: border-color .15s ease, background .15s ease;
+  }
+  input[type="text"]:focus, textarea:focus { outline: none; border-color: var(--accent); background: #fff; }
+  textarea { min-height: 120px; line-height: 1.7; }
+
+  /* 気分スケール */
+  .mood-scale { display: flex; justify-content: space-between; gap: 8px; margin: 6px 0 14px; }
+  .mood-opt {
+    flex: 1; border: 1px solid var(--line); background: var(--surface-2); border-radius: var(--radius-sm);
+    padding: 12px 0; font-size: 1.6rem; cursor: pointer; transition: transform .12s ease, border-color .12s ease, background .12s ease;
+  }
+  .mood-opt:hover { transform: translateY(-2px); }
+  .mood-opt.selected { border-color: var(--accent); background: var(--accent-soft); transform: translateY(-2px); }
+
+  /* フッターのナビ */
+  .step-nav { display: flex; gap: 12px; margin-top: 22px; }
+  .btn {
+    font-family: var(--font); font-size: .95rem; font-weight: 600; border-radius: 999px; padding: 13px 20px;
+    cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    transition: background .15s ease, transform .12s ease, opacity .15s;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); flex: 1; }
+  .btn.primary:hover { background: #b87a4f; }
+  .btn.ghost { color: var(--ink-soft); }
+
+  /* 完了画面 */
+  .done-screen { text-align: center; padding: 18px 6px 6px; }
+  .done-screen .big { font-size: 3rem; }
+  .done-screen h2 { font-size: 1.3rem; margin: 10px 0 6px; }
+  .done-screen p { color: var(--ink-soft); font-size: .9rem; margin-bottom: 22px; }
+
+  footer.foot { text-align: center; font-size: .72rem; color: var(--ink-soft); margin-top: 36px; }
+  .hidden { display: none !important; }
+
+  /* ===== ヘッダー右側 & 設定ボタン ===== */
+  .top-right { display: flex; align-items: center; gap: 10px; }
+  .icon-btn {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+    width: 38px; height: 38px; font-size: 1.1rem; cursor: pointer; box-shadow: var(--shadow-sm);
+    transition: transform .12s ease;
+  }
+  .icon-btn:hover { transform: rotate(30deg); }
+
+  /* ===== 設定シート ===== */
+  .settings-section { margin-bottom: 26px; }
+  .settings-section > h3 { font-size: 1rem; margin-bottom: 4px; }
+  .settings-section > .desc { font-size: .78rem; color: var(--ink-soft); margin-bottom: 14px; }
+
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .row:last-child { border-bottom: none; }
+  .row label { font-size: .9rem; }
+  .row input[type="time"] {
+    font-family: var(--font); font-size: .95rem; border: 1px solid var(--line);
+    border-radius: var(--radius-sm); padding: 8px 10px; background: var(--surface-2); color: var(--ink);
+  }
+
+  /* トグルスイッチ */
+  .switch { position: relative; width: 48px; height: 28px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch .track { position: absolute; inset: 0; background: var(--line); border-radius: 999px; transition: background .2s; cursor: pointer; }
+  .switch .track::before { content: ""; position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: #fff; border-radius: 50%; transition: transform .2s; box-shadow: var(--shadow-sm); }
+  .switch input:checked + .track { background: var(--good); }
+  .switch input:checked + .track::before { transform: translateX(20px); }
+
+  .note-box { font-size: .76rem; color: var(--ink-soft); background: var(--surface-2); border-radius: var(--radius-sm); padding: 10px 12px; margin-top: 12px; }
+
+  /* プロンプト編集 */
+  .seg { display: flex; gap: 8px; margin-bottom: 14px; }
+  .seg button {
+    flex: 1; font-family: var(--font); font-size: .85rem; font-weight: 600; padding: 9px 0;
+    border: 1px solid var(--line); background: var(--surface-2); border-radius: 999px; cursor: pointer; color: var(--ink-soft);
+  }
+  .seg button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+  .prompt-row { border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 12px; margin-bottom: 10px; background: var(--surface-2); }
+  .prompt-row .pr-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .prompt-row select, .prompt-row input[type="number"] {
+    font-family: var(--font); font-size: .82rem; border: 1px solid var(--line); border-radius: 8px;
+    padding: 6px 8px; background: #fff; color: var(--ink);
+  }
+  .prompt-row input[type="number"] { width: 64px; }
+  .prompt-row .pr-actions { margin-left: auto; display: flex; gap: 4px; }
+  .pr-actions button {
+    border: 1px solid var(--line); background: #fff; border-radius: 8px; width: 30px; height: 30px;
+    cursor: pointer; font-size: .9rem; color: var(--ink-soft);
+  }
+  .pr-actions button:hover { color: var(--ink); }
+  .pr-actions button:disabled { opacity: .3; cursor: default; }
+  .prompt-row input[type="text"] { font-size: .88rem; padding: 9px 10px; margin-bottom: 6px; background: #fff; }
+  .prompt-row input[type="text"]:last-child { margin-bottom: 0; }
+
+  .add-prompt { width: 100%; border: 1px dashed var(--line); background: transparent; color: var(--ink-soft);
+    border-radius: var(--radius-sm); padding: 11px 0; cursor: pointer; font-family: var(--font); font-size: .88rem; }
+  .add-prompt:hover { border-color: var(--accent); color: var(--accent); }
+  .reset-link { background: none; border: none; color: var(--ink-soft); font-size: .8rem; cursor: pointer; text-decoration: underline; margin-top: 10px; font-family: var(--font); }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <div class="brand">
+        <h1>Hibi</h1>
+        <span class="sub">朝夕10分のジャーナリング</span>
+      </div>
+      <div class="top-right">
+        <span class="today-chip" id="todayChip">—</span>
+        <button class="icon-btn hidden" id="installBtn" onclick="installApp()" aria-label="アプリをインストール">⬇️</button>
+        <button class="icon-btn" id="settingsBtn" onclick="openSettings()" aria-label="設定">⚙️</button>
+      </div>
+    </header>
+
+    <!-- 概要（ストリーク・記録数）-->
+    <section class="overview">
+      <div class="stat">
+        <div class="num" id="streakNum">0<small> 日</small></div>
+        <div class="label">連続記録 🔥</div>
+      </div>
+      <div class="stat">
+        <div class="num" id="totalNum">0<small> 回</small></div>
+        <div class="label">これまでの記録</div>
+      </div>
+    </section>
+
+    <!-- 朝 / 夜 セッション開始 -->
+    <section class="sessions">
+      <button class="session-btn morning" id="btnMorning" onclick="startSession('morning')">
+        <span class="done-tag">完了 ✓</span>
+        <div class="emoji">🌅</div>
+        <h3>朝のジャーナリング</h3>
+        <p>感謝・今日の意図・自分への一言で一日を方向づける</p>
+      </button>
+      <button class="session-btn evening" id="btnEvening" onclick="startSession('evening')">
+        <span class="done-tag">完了 ✓</span>
+        <div class="emoji">🌙</div>
+        <h3>夜のジャーナリング</h3>
+        <p>良かったこと・学び・気分を振り返って一日を閉じる</p>
+      </button>
+    </section>
+
+    <!-- 気分グラフ -->
+    <section class="card chart-card">
+      <h2>気分の推移</h2>
+      <p class="hint">夜の記録で入力した気分スコア（直近14日）</p>
+      <svg class="chart" id="moodChart" viewBox="0 0 600 140" preserveAspectRatio="none"></svg>
+      <div class="chart-empty hidden" id="chartEmpty">まだ記録がありません。夜のジャーナリングから始めてみましょう。</div>
+    </section>
+
+    <!-- 履歴 -->
+    <section class="history">
+      <h2>これまでの記録</h2>
+      <div id="historyList"></div>
+      <div class="chart-empty hidden" id="historyEmpty">最初のジャーナリングを書いてみましょう ✍️</div>
+    </section>
+
+    <footer class="foot">記録はこの端末のブラウザ内にのみ保存されます。</footer>
+  </div>
+
+  <!-- ===== セッション用シート ===== -->
+  <div class="overlay" id="overlay">
+    <div class="sheet" id="sheet">
+      <div class="sheet-head">
+        <span class="mode-name" id="sheetMode">—</span>
+        <button class="close" onclick="closeSession()" aria-label="閉じる">×</button>
+      </div>
+      <div class="progress"><span id="progressBar"></span></div>
+      <div id="stepArea"></div>
+    </div>
+  </div>
+
+  <!-- ===== 設定シート ===== -->
+  <div class="overlay" id="settingsOverlay">
+    <div class="sheet">
+      <div class="sheet-head">
+        <span class="mode-name">⚙️ 設定</span>
+        <button class="close" onclick="closeSettings()" aria-label="閉じる">×</button>
+      </div>
+
+      <!-- 通知（リマインド）-->
+      <div class="settings-section">
+        <h3>リマインド通知</h3>
+        <p class="desc">朝・夜の決まった時間にブラウザ通知でお知らせします。</p>
+        <div class="row">
+          <label for="notifyToggle">通知を有効にする</label>
+          <span class="switch">
+            <input type="checkbox" id="notifyToggle" onchange="onToggleNotify()">
+            <span class="track" onclick="document.getElementById('notifyToggle').click()"></span>
+          </span>
+        </div>
+        <div class="row">
+          <label for="morningTime">🌅 朝のリマインド</label>
+          <input type="time" id="morningTime" onchange="onTimeChange()">
+        </div>
+        <div class="row">
+          <label for="eveningTime">🌙 夜のリマインド</label>
+          <input type="time" id="eveningTime" onchange="onTimeChange()">
+        </div>
+        <div class="note-box">※ 通知はこのページ（タブ）を開いている間だけ届きます。確実に受け取るには、ブラウザでこのページを開いたままにしてください。</div>
+      </div>
+
+      <!-- プロンプト編集 -->
+      <div class="settings-section">
+        <h3>プロンプトの編集</h3>
+        <p class="desc">質問の文言・種類・並び順を自由にカスタマイズできます。</p>
+        <div class="seg">
+          <button id="segMorning" class="active" onclick="switchEditMode('morning')">🌅 朝</button>
+          <button id="segEvening" onclick="switchEditMode('evening')">🌙 夜</button>
+        </div>
+        <div id="promptEditList"></div>
+        <button class="add-prompt" onclick="addPrompt()">＋ 質問を追加</button>
+        <div style="text-align:center"><button class="reset-link" onclick="resetPrompts()">この時間帯を初期設定に戻す</button></div>
+      </div>
+
+      <div class="step-nav">
+        <button class="btn primary" onclick="closeSettings()">完了</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* =========================================================
+   Hibi — 朝夕ジャーナリングアプリ（ロジック）
+   データはすべて localStorage に保存する。
+   ========================================================= */
+
+const STORAGE_KEY = "hibi_entries_v1";
+const SETTINGS_KEY = "hibi_settings_v1";
+
+/* ----- プロンプト定義（初期値）-----
+   type:
+     list     … 箇条書き3項目
+     text     … 1行入力
+     textarea … 複数行入力
+     mood     … 5段階の気分スケール（+一言メモ）           */
+const DEFAULT_PROMPTS = {
+  morning: [
+    { key: "gratitude",   type: "list",     title: "今、感謝していることは？",        note: "小さなことでOK。3つ書き出しましょう。", count: 3, placeholder: "感謝していること" },
+    { key: "greatDay",    type: "list",     title: "今日が最高の一日になる条件は？",  note: "実行できる行動の形で3つ。",            count: 3, placeholder: "今日やること" },
+    { key: "affirmation", type: "text",     title: "今日の自分への一言",              note: "「私は〜」から始めてみましょう。",     placeholder: "私は…" },
+    { key: "braindump",   type: "textarea", title: "頭に浮かぶことを書き出す（任意）", note: "思いつくまま2分。空欄でも進めます。", placeholder: "今の気持ちや考え…" },
+  ],
+  evening: [
+    { key: "goodThings", type: "list",     title: "今日良かったこと・嬉しかったこと",          note: "うまくいったこと・小さな喜びを3つ。",  count: 3, placeholder: "良かったこと" },
+    { key: "lesson",     type: "text",     title: "今日の学び・気づきは？",                    note: "ひとつだけで十分です。",              placeholder: "気づいたこと" },
+    { key: "improve",    type: "textarea", title: "もっと良くできた点と、明日の小さな一手",    note: "責めずに、次の一歩を考えましょう。",  placeholder: "明日はこうしてみる…" },
+    { key: "mood",       type: "mood",     title: "今日の気分は？",                            note: "直感で選んで、一言そえましょう。",    placeholder: "ひとことメモ（任意）" },
+  ],
+};
+
+const MODE_LABEL = { morning: "🌅 朝のジャーナリング", evening: "🌙 夜のジャーナリング" };
+const MOOD_FACES = ["😞", "😕", "😐", "🙂", "😄"]; // スコア 1〜5 に対応
+const TYPE_LABEL = { list: "箇条書き3つ", text: "1行", textarea: "自由記述", mood: "気分スケール" };
+
+/* ----- データ読み書き ----- */
+function loadData() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
+  catch { return {}; }
+}
+function saveData(data) { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+
+/* ----- 設定の読み書き（通知・カスタムプロンプト）----- */
+function loadSettings() {
+  let s = {};
+  try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch { s = {}; }
+  if (!s.notify) s.notify = { enabled: false, morningTime: "07:00", eveningTime: "21:00" };
+  if (!s.prompts) s.prompts = JSON.parse(JSON.stringify(DEFAULT_PROMPTS));
+  return s;
+}
+function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
+/* 実際に使うプロンプト（カスタム設定があればそれを優先）*/
+function getPrompts(mode) { return loadSettings().prompts[mode]; }
+
+/* ----- 日付ユーティリティ ----- */
+function dateKey(d = new Date()) {
+  // ローカル時刻基準で YYYY-MM-DD を作る
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function formatJP(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const wd = ["日", "月", "火", "水", "木", "金", "土"][date.getDay()];
+  return `${m}月${d}日（${wd}）`;
+}
+
+/* ----- セッションの状態 ----- */
+let session = null; // { mode, step, answers, _moodScore }
+
+function startSession(mode) {
+  const data = loadData();
+  const existing = data[dateKey()]?.[mode] || {};
+  // 既存の回答があれば引き継いで編集できるようにする
+  session = { mode, step: 0, answers: JSON.parse(JSON.stringify(existing)) };
+  document.getElementById("sheetMode").textContent = MODE_LABEL[mode];
+  document.getElementById("overlay").classList.add("open");
+  renderStep();
+}
+
+function closeSession() {
+  document.getElementById("overlay").classList.remove("open");
+  session = null;
+}
+
+/* ----- ステップ描画 ----- */
+function renderStep() {
+  const steps = getPrompts(session.mode);
+  const total = steps.length;
+
+  // すべて回答し終えたら完了画面へ
+  if (session.step >= total) { renderDone(); return; }
+
+  const p = steps[session.step];
+  const a = session.answers[p.key];
+  document.getElementById("progressBar").style.width = (session.step / total * 100) + "%";
+
+  let inputHTML = "";
+  if (p.type === "list") {
+    const vals = Array.isArray(a) ? a : [];
+    for (let i = 0; i < p.count; i++) {
+      inputHTML += `<div class="field"><input type="text" data-i="${i}" placeholder="${p.placeholder} ${i + 1}" value="${escapeHTML(vals[i] || "")}"></div>`;
+    }
+  } else if (p.type === "text") {
+    inputHTML = `<div class="field"><input type="text" data-single placeholder="${p.placeholder}" value="${escapeHTML(a || "")}"></div>`;
+  } else if (p.type === "textarea") {
+    inputHTML = `<div class="field"><textarea data-single placeholder="${p.placeholder}">${escapeHTML(a || "")}</textarea></div>`;
+  } else if (p.type === "mood") {
+    const cur = (a && a.score) || 0;
+    let opts = "";
+    for (let s = 1; s <= 5; s++) {
+      opts += `<button type="button" class="mood-opt ${cur === s ? "selected" : ""}" data-score="${s}" onclick="selectMood(${s})">${MOOD_FACES[s - 1]}</button>`;
+    }
+    inputHTML = `<div class="mood-scale">${opts}</div>
+      <div class="field"><input type="text" data-moodnote placeholder="${p.placeholder}" value="${escapeHTML((a && a.note) || "")}"></div>`;
+    session._moodScore = cur;
+  }
+
+  const isLast = session.step === total - 1;
+  document.getElementById("stepArea").innerHTML = `
+    <div class="step">
+      <div class="q-index">${session.step + 1} / ${total}</div>
+      <h2>${p.title}</h2>
+      <p class="q-note">${p.note}</p>
+      ${inputHTML}
+      <div class="step-nav">
+        ${session.step > 0 ? `<button class="btn ghost" onclick="prevStep()">戻る</button>` : ""}
+        <button class="btn primary" onclick="nextStep()">${isLast ? "保存して完了" : "次へ"}</button>
+      </div>
+    </div>`;
+
+  // 最初の入力欄にフォーカス
+  const first = document.querySelector("#stepArea input[type=text], #stepArea textarea");
+  if (first) setTimeout(() => first.focus(), 50);
+}
+
+/* 気分スケールの選択 */
+function selectMood(score) {
+  document.querySelectorAll(".mood-opt").forEach(el => {
+    el.classList.toggle("selected", Number(el.dataset.score) === score);
+  });
+  session._moodScore = score;
+}
+
+/* 現在ステップの入力値を session.answers に取り込む */
+function collectStep() {
+  const p = getPrompts(session.mode)[session.step];
+  if (p.type === "list") {
+    const vals = [];
+    document.querySelectorAll("#stepArea input[data-i]").forEach(inp => vals.push(inp.value.trim()));
+    session.answers[p.key] = vals;
+  } else if (p.type === "text" || p.type === "textarea") {
+    const el = document.querySelector("#stepArea [data-single]");
+    session.answers[p.key] = el.value.trim();
+  } else if (p.type === "mood") {
+    const note = document.querySelector("#stepArea [data-moodnote]").value.trim();
+    session.answers[p.key] = { score: session._moodScore || 0, note };
+  }
+}
+
+function nextStep() { collectStep(); session.step++; renderStep(); }
+function prevStep() { collectStep(); session.step--; renderStep(); }
+
+/* ----- 完了：保存して終了画面 ----- */
+function renderDone() {
+  const data = loadData();
+  const k = dateKey();
+  if (!data[k]) data[k] = {};
+  data[k][session.mode] = session.answers;
+  data[k][session.mode]._savedAt = new Date().toISOString();
+  saveData(data);
+
+  document.getElementById("progressBar").style.width = "100%";
+  const streak = calcStreak(data);
+  const msg = session.mode === "morning"
+    ? "今日も良い一日になりますように。"
+    : "今日もおつかれさまでした。ゆっくり休んでください。";
+  document.getElementById("stepArea").innerHTML = `
+    <div class="done-screen">
+      <div class="big">${session.mode === "morning" ? "🌅" : "🌙"}</div>
+      <h2>記録しました</h2>
+      <p>${msg}<br>連続記録は <strong>${streak}日</strong> です 🔥</p>
+      <button class="btn primary" onclick="finishSession()">ホームに戻る</button>
+    </div>`;
+}
+
+function finishSession() { closeSession(); render(); }
+
+/* ----- ストリーク計算（朝か夜どちらか記録があれば「記録した日」とみなす）----- */
+function calcStreak(data) {
+  let streak = 0;
+  let d = new Date();
+  // 今日まだ未記録でも、昨日までの連続は途切れていない扱いにする
+  if (!hasEntry(data, dateKey(d))) d.setDate(d.getDate() - 1);
+  while (hasEntry(data, dateKey(d))) { streak++; d.setDate(d.getDate() - 1); }
+  return streak;
+}
+function hasEntry(data, key) {
+  const e = data[key];
+  return !!(e && (e.morning || e.evening));
+}
+
+/* ----- ホーム画面の描画 ----- */
+function render() {
+  const data = loadData();
+  const k = dateKey();
+
+  document.getElementById("todayChip").textContent = formatJP(k);
+  document.getElementById("streakNum").innerHTML = calcStreak(data) + "<small> 日</small>";
+
+  let total = 0;
+  Object.values(data).forEach(e => { if (e.morning) total++; if (e.evening) total++; });
+  document.getElementById("totalNum").innerHTML = total + "<small> 回</small>";
+
+  const todayEntry = data[k] || {};
+  document.getElementById("btnMorning").classList.toggle("is-done", !!todayEntry.morning);
+  document.getElementById("btnEvening").classList.toggle("is-done", !!todayEntry.evening);
+
+  // 時間帯に応じて背景の色味を変える
+  const hour = new Date().getHours();
+  document.body.style.setProperty("--mode-tint", (hour < 12) ? "var(--morning-soft)" : "var(--evening-soft)");
+
+  renderChart(data);
+  renderHistory(data);
+}
+
+/* ----- 気分グラフ（直近14日のSVG折れ線）----- */
+function renderChart(data) {
+  const svg = document.getElementById("moodChart");
+  const empty = document.getElementById("chartEmpty");
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const k = dateKey(d);
+    days.push({ k, score: data[k]?.evening?.mood?.score || null });
+  }
+  const hasAny = days.some(d => d.score);
+  svg.classList.toggle("hidden", !hasAny);
+  empty.classList.toggle("hidden", hasAny);
+  if (!hasAny) { svg.innerHTML = ""; return; }
+
+  const W = 600, H = 140, padX = 16, padY = 18;
+  const stepX = (W - padX * 2) / (days.length - 1);
+  const yFor = s => H - padY - ((s - 1) / 4) * (H - padY * 2); // score 1..5
+
+  // 横の補助線
+  let grid = "";
+  for (let s = 1; s <= 5; s += 2) {
+    const y = yFor(s);
+    grid += `<line x1="${padX}" y1="${y}" x2="${W - padX}" y2="${y}" stroke="var(--line)" stroke-width="1"/>`;
+  }
+
+  // 折れ線（記録のある点のみ繋ぐ）
+  const pts = days.map((d, i) => d.score ? { x: padX + i * stepX, y: yFor(d.score) } : null).filter(Boolean);
+  let path = "";
+  pts.forEach((p, i) => { path += (i === 0 ? "M" : "L") + p.x.toFixed(1) + " " + p.y.toFixed(1) + " "; });
+  const line = `<path d="${path}" fill="none" stroke="var(--evening)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`;
+  const dots = pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="var(--evening)"/>`).join("");
+
+  svg.innerHTML = grid + line + dots;
+}
+
+/* ----- 履歴一覧（新しい順）----- */
+function renderHistory(data) {
+  const list = document.getElementById("historyList");
+  const empty = document.getElementById("historyEmpty");
+  const keys = Object.keys(data).sort().reverse();
+  empty.classList.toggle("hidden", keys.length > 0);
+  list.innerHTML = keys.map(k => {
+    const e = data[k];
+    const badges =
+      (e.morning ? `<span class="badge m">🌅 朝</span>` : "") +
+      (e.evening ? `<span class="badge e">🌙 夜</span>` : "");
+    return `<div class="entry">
+      <div class="date">${formatJP(k)} <span class="badges">${badges}</span></div>
+      <details>
+        <summary>内容を見る</summary>
+        <div class="detail-body">${renderEntryDetail(e)}</div>
+      </details>
+    </div>`;
+  }).join("");
+}
+
+function renderEntryDetail(e) {
+  let html = "";
+  ["morning", "evening"].forEach(mode => {
+    if (!e[mode]) return;
+    html += `<strong>${mode === "morning" ? "🌅 朝" : "🌙 夜"}</strong>`;
+    // 現在のプロンプト定義からラベルを引く（見つからなければキー名で表示）
+    const prompts = getPrompts(mode);
+    Object.keys(e[mode]).forEach(key => {
+      if (key.startsWith("_")) return; // _savedAt などの内部フィールドは除外
+      const val = e[mode][key];
+      const def = prompts.find(p => p.key === key);
+      const label = def ? def.title.replace(/[？?（(].*$/, "").trim() : key;
+      if (Array.isArray(val)) {
+        html += listBlock(label, val);
+      } else if (val && typeof val === "object" && "score" in val) {
+        if (val.score) html += `<div>${label}: ${MOOD_FACES[val.score - 1]} ${escapeHTML(val.note || "")}</div>`;
+      } else if (val) {
+        html += `<div>${label}: ${escapeHTML(val)}</div>`;
+      }
+    });
+  });
+  return html || "（記録なし）";
+}
+
+function listBlock(label, arr) {
+  const items = (arr || []).filter(x => x && x.trim());
+  if (!items.length) return "";
+  return `<div>${label}:<ul>${items.map(x => `<li>${escapeHTML(x)}</li>`).join("")}</ul></div>`;
+}
+
+/* ----- エスケープ（XSS対策）----- */
+function escapeHTML(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* =========================================================
+   設定画面（通知・プロンプト編集）
+   ========================================================= */
+let editMode = "morning"; // 編集中の時間帯
+
+function openSettings() {
+  const s = loadSettings();
+  document.getElementById("notifyToggle").checked = s.notify.enabled;
+  document.getElementById("morningTime").value = s.notify.morningTime;
+  document.getElementById("eveningTime").value = s.notify.eveningTime;
+  switchEditMode("morning");
+  document.getElementById("settingsOverlay").classList.add("open");
+}
+function closeSettings() {
+  document.getElementById("settingsOverlay").classList.remove("open");
+  render(); // ホームを最新化
+}
+
+/* ----- 通知設定 ----- */
+async function onToggleNotify() {
+  const on = document.getElementById("notifyToggle").checked;
+  if (on && "Notification" in window && Notification.permission !== "granted") {
+    // 初回は許可をリクエスト
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") {
+      document.getElementById("notifyToggle").checked = false;
+      alert("ブラウザの通知が許可されませんでした。ブラウザの設定から許可してください。");
+      return;
+    }
+  }
+  const s = loadSettings();
+  s.notify.enabled = document.getElementById("notifyToggle").checked;
+  saveSettings(s);
+  startNotifyLoop();
+}
+function onTimeChange() {
+  const s = loadSettings();
+  s.notify.morningTime = document.getElementById("morningTime").value || "07:00";
+  s.notify.eveningTime = document.getElementById("eveningTime").value || "21:00";
+  saveSettings(s);
+}
+
+/* ----- リマインド通知のループ（タブが開いている間だけ動作）----- */
+let notifyTimer = null;
+const notifiedFlags = {}; // 同じ時刻に何度も通知しないための記録
+function startNotifyLoop() {
+  if (notifyTimer) clearInterval(notifyTimer);
+  notifyTimer = setInterval(checkReminders, 30000); // 30秒ごとに時刻を確認
+  checkReminders();
+}
+function checkReminders() {
+  const s = loadSettings();
+  if (!s.notify.enabled || !("Notification" in window) || Notification.permission !== "granted") return;
+  const now = new Date();
+  const hm = String(now.getHours()).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0");
+  const data = loadData();
+  const today = dateKey();
+  [["morning", s.notify.morningTime], ["evening", s.notify.eveningTime]].forEach(([slot, t]) => {
+    if (t !== hm) return;
+    const flag = today + slot;
+    if (notifiedFlags[flag]) return;
+    notifiedFlags[flag] = true;
+    if (data[today] && data[today][slot]) return; // 既に記録済みなら通知しない
+    const title = slot === "morning" ? "🌅 朝のジャーナリング" : "🌙 夜のジャーナリング";
+    const body = slot === "morning" ? "今日の意図を書いて一日を始めましょう" : "今日を振り返って一日を閉じましょう";
+    try { new Notification(title, { body }); } catch (e) { /* 通知不可の環境は無視 */ }
+  });
+}
+
+/* ----- プロンプト編集 ----- */
+function switchEditMode(mode) {
+  editMode = mode;
+  document.getElementById("segMorning").classList.toggle("active", mode === "morning");
+  document.getElementById("segEvening").classList.toggle("active", mode === "evening");
+  renderPromptEditor();
+}
+
+function renderPromptEditor() {
+  const prompts = getPrompts(editMode);
+  const types = ["list", "text", "textarea", "mood"];
+  document.getElementById("promptEditList").innerHTML = prompts.map((p, i) => {
+    const typeOpts = types.map(t => `<option value="${t}" ${p.type === t ? "selected" : ""}>${TYPE_LABEL[t]}</option>`).join("");
+    const countField = p.type === "list"
+      ? `<input type="number" min="1" max="6" value="${p.count || 3}" title="項目数" onchange="updatePrompt(${i},'count',this.value)">` : "";
+    return `<div class="prompt-row">
+      <div class="pr-top">
+        <select onchange="updatePrompt(${i},'type',this.value)">${typeOpts}</select>
+        ${countField}
+        <div class="pr-actions">
+          <button onclick="movePrompt(${i},-1)" ${i === 0 ? "disabled" : ""} title="上へ">↑</button>
+          <button onclick="movePrompt(${i},1)" ${i === prompts.length - 1 ? "disabled" : ""} title="下へ">↓</button>
+          <button onclick="deletePrompt(${i})" title="削除">🗑</button>
+        </div>
+      </div>
+      <input type="text" value="${escapeHTML(p.title || "")}" placeholder="質問文" onchange="updatePrompt(${i},'title',this.value)">
+      <input type="text" value="${escapeHTML(p.note || "")}" placeholder="補足説明（任意）" onchange="updatePrompt(${i},'note',this.value)">
+    </div>`;
+  }).join("");
+}
+
+function updatePrompt(i, field, value) {
+  const s = loadSettings();
+  const p = s.prompts[editMode][i];
+  if (field === "count") p.count = Math.max(1, Math.min(6, Number(value) || 3));
+  else if (field === "type") {
+    p.type = value;
+    if (value === "list" && !p.count) p.count = 3;
+  } else p[field] = value;
+  saveSettings(s);
+  if (field === "type") renderPromptEditor(); // 種類変更で項目数欄の表示を更新
+}
+
+function addPrompt() {
+  const s = loadSettings();
+  // 重複しないキーを生成
+  s.prompts[editMode].push({ key: "c" + Date.now(), type: "text", title: "新しい質問", note: "", placeholder: "ここに記入" });
+  saveSettings(s);
+  renderPromptEditor();
+}
+
+function deletePrompt(i) {
+  const s = loadSettings();
+  if (s.prompts[editMode].length <= 1) { alert("質問は最低1つ必要です。"); return; }
+  if (!confirm("この質問を削除しますか？")) return;
+  s.prompts[editMode].splice(i, 1);
+  saveSettings(s);
+  renderPromptEditor();
+}
+
+function movePrompt(i, dir) {
+  const s = loadSettings();
+  const arr = s.prompts[editMode];
+  const j = i + dir;
+  if (j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  saveSettings(s);
+  renderPromptEditor();
+}
+
+function resetPrompts() {
+  if (!confirm("この時間帯のプロンプトを初期設定に戻しますか？")) return;
+  const s = loadSettings();
+  s.prompts[editMode] = JSON.parse(JSON.stringify(DEFAULT_PROMPTS[editMode]));
+  saveSettings(s);
+  renderPromptEditor();
+}
+
+/* オーバーレイの背景クリックで閉じる */
+document.getElementById("overlay").addEventListener("click", e => {
+  if (e.target.id === "overlay") closeSession();
+});
+document.getElementById("settingsOverlay").addEventListener("click", e => {
+  if (e.target.id === "settingsOverlay") closeSettings();
+});
+
+/* =========================================================
+   PWA（インストール・オフライン対応）
+   ========================================================= */
+
+/* Service Worker を登録（オフラインでも起動できるようにする）*/
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => { /* 失敗しても通常動作は継続 */ });
+  });
+}
+
+/* 「ホーム画面に追加」ボタンの制御（対応ブラウザのみ表示）*/
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById("installBtn").classList.remove("hidden");
+});
+function installApp() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.finally(() => {
+    deferredPrompt = null;
+    document.getElementById("installBtn").classList.add("hidden");
+  });
+}
+window.addEventListener("appinstalled", () => {
+  document.getElementById("installBtn").classList.add("hidden");
+});
+
+/* 初期描画 */
+render();
+startNotifyLoop(); // 通知が有効ならリマインドを開始
+</script>
+</body>
+</html>
