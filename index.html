@@ -76,6 +76,21 @@
   .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px; }
   .section-label { font-size: .82rem; font-weight: 700; color: var(--ink-soft); letter-spacing: .04em; margin: 4px 2px 12px; }
 
+  /* ===== ヒーロー（目標・アファメーション）===== */
+  .hero-card { position: relative; background: linear-gradient(140deg, #c98a5e, #5b6bb5);
+    color: #fff; border-radius: var(--radius); padding: 24px 22px; margin-bottom: 22px;
+    box-shadow: var(--shadow); cursor: pointer; transition: transform .15s ease; }
+  .hero-card:hover { transform: translateY(-2px); }
+  .hero-edit { position: absolute; top: 14px; right: 14px; background: rgba(255,255,255,.2);
+    border: none; color: #fff; width: 34px; height: 34px; border-radius: 999px; cursor: pointer; font-size: .9rem; }
+  .hero-edit:hover { background: rgba(255,255,255,.32); }
+  .hero-label { font-size: .72rem; opacity: .9; letter-spacing: .06em; font-weight: 600; }
+  .hero-goal { font-size: 1.35rem; font-weight: 700; line-height: 1.5; margin-top: 4px; word-break: break-word; }
+  .hero-affirm { font-size: 1.12rem; font-weight: 600; line-height: 1.6; margin-top: 4px; word-break: break-word; }
+  .hero-divider { height: 1px; background: rgba(255,255,255,.28); margin: 16px 0; }
+  .hero-empty { font-size: 1rem; font-weight: 500; opacity: .95; line-height: 1.6; padding-right: 30px; }
+  .hero-placeholder { opacity: .6; font-weight: 500; }
+
   /* ===== ストリーク & 概要 ===== */
   .overview { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 22px; }
   .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-sm); padding: 16px 18px; box-shadow: var(--shadow-sm); }
@@ -286,6 +301,12 @@
       </div>
     </header>
 
+    <!-- 目標・アファメーション（いつでも編集可）-->
+    <section class="hero-card" id="heroCard" onclick="openGoalEditor()">
+      <button class="hero-edit" onclick="event.stopPropagation(); openGoalEditor()" aria-label="編集">✏️</button>
+      <div id="heroInner"></div>
+    </section>
+
     <!-- 概要（ストリーク・記録数）-->
     <section class="overview">
       <div class="stat">
@@ -385,6 +406,29 @@
     </div>
   </div>
 
+  <!-- ===== 目標・アファメーション編集 ===== -->
+  <div class="overlay" id="goalOverlay">
+    <div class="sheet">
+      <div class="sheet-head">
+        <span class="mode-name">🎯 目標とアファメーション</span>
+        <button class="close" onclick="closeGoal()" aria-label="閉じる">×</button>
+      </div>
+      <div class="field">
+        <div class="field-label">🎯 わたしの目標</div>
+        <div class="field-note">いま叶えたい目標を1つ。シンプルでOK。いつでも変えられます。</div>
+        <textarea id="goalInput" placeholder="例：毎日余裕をもって過ごし、人にやさしくできている"></textarea>
+      </div>
+      <div class="field">
+        <div class="field-label">💫 アファメーション</div>
+        <div class="field-note">自分を励ます宣言を1つ。「私は〜」で書くと響きます。</div>
+        <textarea id="affirmInput" placeholder="例：私は、毎日少しずつ理想の自分に近づいている"></textarea>
+      </div>
+      <div class="step-nav">
+        <button class="btn primary" onclick="saveGoal()">保存する</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== 設定シート ===== -->
   <div class="overlay" id="settingsOverlay">
     <div class="sheet">
@@ -469,10 +513,10 @@ const DEFAULT_PROMPTS = {
       title: "今日の「ありがとう」を3つ",
       note: "人・モノ・出来事、なんでも。顔が思い浮かぶ相手なら最高。",
       count: 3, placeholder: "ありがとう" },
-    { key: "selfPraise", type: "list", label: "自分をほめる",
-      title: "今日、自分をほめたいところは？",
-      note: "がんばったこと・できたことを3つ。自分に「お疲れさま」を。",
-      count: 3, placeholder: "よくやったこと" },
+    { key: "done", type: "list", label: "今日できたこと",
+      title: "今日できたことは？",
+      note: "大小は問いません。やれたこと・前に進んだことを3つ。自分に「お疲れさま」を。",
+      count: 3, placeholder: "できたこと" },
     { key: "okage", type: "textarea", label: "おかげ変換",
       title: "イヤだったことを「おかげで」に変えてみよう",
       note: "「〜のせいで」を「〜のおかげで」に言いかえると？ 思いつかなければ空欄でOK。",
@@ -529,11 +573,23 @@ function loadSettings() {
   let s = {};
   try { s = JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; } catch { s = {}; }
   if (!s.notify) s.notify = { enabled: false, morningTime: "07:00", eveningTime: "21:00" };
-  if (!s.prompts) s.prompts = JSON.parse(JSON.stringify(DEFAULT_PROMPTS));
+  if (s.goal === undefined) s.goal = "";              // ホームに表示する目標
+  if (s.affirmation === undefined) s.affirmation = ""; // ホームに表示するアファメーション
   return s;
 }
 function saveSettings(s) { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); }
-function getPrompts(mode) { return loadSettings().prompts[mode]; }
+/* 実際に使うプロンプト。ユーザーが編集していれば customPrompts を、無ければ既定を使う。
+   こうすることで、アプリ更新で既定の質問を変えても、未編集の人には常に最新が届く。 */
+function getPrompts(mode) {
+  const s = loadSettings();
+  return (s.customPrompts && s.customPrompts[mode]) ? s.customPrompts[mode] : DEFAULT_PROMPTS[mode];
+}
+/* 編集用に customPrompts[mode] を用意する（無ければ現在の内容を複製）*/
+function ensureCustom(s, mode) {
+  if (!s.customPrompts) s.customPrompts = {};
+  if (!s.customPrompts[mode]) s.customPrompts[mode] = JSON.parse(JSON.stringify(getPrompts(mode)));
+  return s.customPrompts[mode];
+}
 
 /* ----- 日付ユーティリティ ----- */
 function dateKey(d = new Date()) {
@@ -792,6 +848,46 @@ function openLearn() {
 function closeLearn() { document.getElementById("learnOverlay").classList.remove("open"); }
 
 /* =========================================================
+   目標・アファメーション（ホーム上部に大きく表示）
+   ========================================================= */
+function renderHero() {
+  const s = loadSettings();
+  const goal = s.goal || "";
+  const aff = s.affirmation || "";
+  const inner = document.getElementById("heroInner");
+  if (!goal && !aff) {
+    inner.innerHTML = `<div class="hero-empty">タップして、あなたの「目標」と「アファメーション」を決めましょう ✍️</div>`;
+    return;
+  }
+  inner.innerHTML = `
+    <div class="hero-block">
+      <div class="hero-label">🎯 わたしの目標</div>
+      <p class="hero-goal ${goal ? "" : "hero-placeholder"}">${goal ? escapeHTML(goal) : "目標を設定する"}</p>
+    </div>
+    <div class="hero-divider"></div>
+    <div class="hero-block">
+      <div class="hero-label">💫 アファメーション</div>
+      <p class="hero-affirm ${aff ? "" : "hero-placeholder"}">${aff ? escapeHTML(aff) : "アファメーションを設定する"}</p>
+    </div>`;
+}
+function openGoalEditor() {
+  const s = loadSettings();
+  document.getElementById("goalInput").value = s.goal || "";
+  document.getElementById("affirmInput").value = s.affirmation || "";
+  document.getElementById("goalOverlay").classList.add("open");
+  setTimeout(() => document.getElementById("goalInput").focus(), 50);
+}
+function closeGoal() { document.getElementById("goalOverlay").classList.remove("open"); }
+function saveGoal() {
+  const s = loadSettings();
+  s.goal = document.getElementById("goalInput").value.trim();
+  s.affirmation = document.getElementById("affirmInput").value.trim();
+  saveSettings(s);
+  closeGoal();
+  render();
+}
+
+/* =========================================================
    ストリーク・ホーム描画
    ========================================================= */
 function hasEntry(data, key) {
@@ -830,6 +926,7 @@ function render() {
   const hour = new Date().getHours();
   document.body.style.setProperty("--mode-tint", (hour < 12) ? "var(--morning-soft)" : "var(--evening-soft)");
 
+  renderHero();
   renderTodayLearn();
   renderChart(data);
   renderHistory(data);
@@ -1028,7 +1125,7 @@ function renderPromptEditor() {
 }
 function updatePrompt(i, field, value) {
   const s = loadSettings();
-  const p = s.prompts[editMode][i];
+  const p = ensureCustom(s, editMode)[i];
   if (field === "count") p.count = Math.max(1, Math.min(6, Number(value) || 3));
   else if (field === "type") {
     p.type = value;
@@ -1039,21 +1136,22 @@ function updatePrompt(i, field, value) {
 }
 function addPrompt() {
   const s = loadSettings();
-  s.prompts[editMode].push({ key: "c" + Date.now(), type: "text", title: "新しい質問", note: "", placeholder: "ここに記入" });
+  ensureCustom(s, editMode).push({ key: "c" + Date.now(), type: "text", title: "新しい質問", note: "", placeholder: "ここに記入" });
   saveSettings(s);
   renderPromptEditor();
 }
 function deletePrompt(i) {
   const s = loadSettings();
-  if (s.prompts[editMode].length <= 1) { alert("質問は最低1つ必要です。"); return; }
+  const arr = ensureCustom(s, editMode);
+  if (arr.length <= 1) { alert("質問は最低1つ必要です。"); return; }
   if (!confirm("この質問を削除しますか？")) return;
-  s.prompts[editMode].splice(i, 1);
+  arr.splice(i, 1);
   saveSettings(s);
   renderPromptEditor();
 }
 function movePrompt(i, dir) {
   const s = loadSettings();
-  const arr = s.prompts[editMode];
+  const arr = ensureCustom(s, editMode);
   const j = i + dir;
   if (j < 0 || j >= arr.length) return;
   [arr[i], arr[j]] = [arr[j], arr[i]];
@@ -1063,7 +1161,7 @@ function movePrompt(i, dir) {
 function resetPrompts() {
   if (!confirm("この時間帯の質問を初期設定に戻しますか？")) return;
   const s = loadSettings();
-  s.prompts[editMode] = JSON.parse(JSON.stringify(DEFAULT_PROMPTS[editMode]));
+  if (s.customPrompts) delete s.customPrompts[editMode]; // カスタムを消すと既定に戻る
   saveSettings(s);
   renderPromptEditor();
 }
@@ -1095,12 +1193,13 @@ window.addEventListener("appinstalled", () => {
 });
 
 /* 背景クリックで各シートを閉じる */
-["overlay", "momentOverlay", "learnOverlay", "settingsOverlay"].forEach(id => {
+["overlay", "momentOverlay", "learnOverlay", "goalOverlay", "settingsOverlay"].forEach(id => {
   document.getElementById(id).addEventListener("click", e => {
     if (e.target.id !== id) return;
     if (id === "overlay") closeSession();
     else if (id === "momentOverlay") closeMoment();
     else if (id === "learnOverlay") closeLearn();
+    else if (id === "goalOverlay") closeGoal();
     else closeSettings();
   });
 });
